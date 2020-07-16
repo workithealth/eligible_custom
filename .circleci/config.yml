@@ -1,0 +1,76 @@
+version: 2
+default_environment: &default_environment
+  docker:
+    - image: circleci/ruby:2.4-stretch-browsers
+      environment:
+        BUNDLE_JOBS: 3
+        BUNDLE_RETRY: 3
+        BUNDLE_PATH: vendor/bundle
+        RAILS_ENV: test
+        CC_TEST_REPORTER_ID: 1a814ffba15f437df919868f6c26f3c6ac111338b88f9a9d7e2b3030598bccdd
+  working_directory: ~/eligible-ruby
+
+aliases:
+  # Bundle install dependencies
+  - &bundle_install
+      name: Bundle Install
+      command: bundle check || (bundle install --deployment && bundle clean) # Stop growing cache
+  - &save_bundle_cache
+      key: gems-{{ .Environment.CACHE_VERSION }}-{{ checksum "Gemfile.lock" }}
+      paths:
+        - vendor/bundle
+        - /usr/local/bundle/config
+  - &restore_bundle_cache
+      keys:
+        - gems-{{ .Environment.CACHE_VERSION }}-{{ checksum "Gemfile.lock" }}
+        - gems-{{ .Environment.CACHE_VERSION }}-      # Fallback to any recent cache
+
+  - &pre_build
+      name: Pre build
+      command: ./cc-test-reporter before-build
+
+  # Setup CC
+  - &setup_cc_test_reporter
+      name: Setup CodeClimate test reporter
+      command: curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter &&
+                 chmod +x cc-test-reporter
+
+  # Code Climate coverage
+  - &upload_coverage
+      name: Upload coverage report to CodeClimate
+      command: |
+        ./cc-test-reporter sum-coverage --output - coverage/codeclimate.*.json | ./cc-test-reporter upload-coverage --debug --input -
+
+  # Running RSpec
+  - &run_rspec
+      name: Run RSpec
+      command: |
+        ./cc-test-reporter before-build
+        bundle exec rspec
+
+jobs:
+  tests:
+    <<: *default_environment
+    parallelism: 2
+    steps:
+      - checkout
+
+      - restore_cache: *restore_bundle_cache
+      - run: *bundle_install
+      - save_cache: *save_bundle_cache
+
+      # Setup CC
+      - run: *setup_cc_test_reporter
+
+      # Run specs in parallel
+      - run: *run_rspec
+      - run:
+          name: Code Climate Test Coverage
+          command: |
+            ./cc-test-reporter format-coverage -t simplecov -o "coverage/codeclimate.$CIRCLE_NODE_INDEX.json"
+      - run: *upload_coverage
+workflows:
+  version: 2
+  test:
+    jobs:
+      - tests

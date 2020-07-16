@@ -1,0 +1,23 @@
+engines:
+  duplication:
+    enabled: true
+    config:
+      languages:
+      - ruby
+
+  fixme:
+    enabled: true
+
+  rubocop:
+    enabled: true
+
+ratings:
+  paths:
+  - Gemfile.lock
+  - Rakefile
+  - "**.rake"
+  - "**.rb"
+
+exclude_paths:
+- .rubocop.yml
+- spec/
